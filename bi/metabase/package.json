@@ -1,0 +1,8 @@
+{
+  "name": "hatid-metabase-screenshots",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "puppeteer-core": "23.11.1"
+  }
+}

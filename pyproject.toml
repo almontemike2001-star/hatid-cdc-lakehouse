@@ -1,0 +1,46 @@
+[project]
+name = "hatid"
+version = "0.1.0"
+description = "CDC lakehouse for a synthetic food-delivery platform: Postgres -> Debezium -> Redpanda -> ClickHouse -> dbt, orchestrated by Dagster."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "psycopg[binary]>=3.2",
+    "clickhouse-connect>=0.8",
+    "dbt-core>=1.9,<2",
+    "dbt-clickhouse>=1.9",
+    "dagster>=1.9",
+    "dagster-webserver>=1.9",
+    "dagster-dbt>=0.25",
+]
+
+[project.scripts]
+hatid = "hatid.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hatid", "orchestration/hatid_dagster"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["stack: needs the docker compose stack (Postgres, Redpanda, Debezium, ClickHouse)"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.dagster]
+module_name = "hatid_dagster.definitions"
+code_location_name = "hatid"
+
+[tool.ruff.lint.per-file-ignores]
+"bi/**" = ["E501"]  # embedded SQL in dashboard definitions

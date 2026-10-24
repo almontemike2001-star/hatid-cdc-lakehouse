@@ -1,0 +1,118 @@
+# Hatid CDC stack. Ports avoid the other portfolio projects on this machine.
+#   docker compose up -d --wait                 core: Postgres, Redpanda, Debezium, ClickHouse
+#   docker compose --profile bi up -d --wait    + Metabase (http://localhost:3002)
+name: hatid
+
+services:
+  postgres:
+    image: postgres:16
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4", "-c", "max_wal_senders=4"]
+    environment:
+      POSTGRES_DB: hatid
+      POSTGRES_USER: hatid
+      POSTGRES_PASSWORD: hatid
+    ports: ["127.0.0.1:5435:5432"]
+    volumes:
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hatid -d hatid"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda start
+      - --mode dev-container
+      - --smp 1
+      - --memory 1G
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:29092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:29092
+    ports: ["127.0.0.1:29092:29092"]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  connect:
+    image: quay.io/debezium/connect:2.7.3.Final
+    depends_on:
+      redpanda: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    environment:
+      BOOTSTRAP_SERVERS: redpanda:9092
+      GROUP_ID: hatid-connect
+      CONFIG_STORAGE_TOPIC: _connect_configs
+      OFFSET_STORAGE_TOPIC: _connect_offsets
+      STATUS_STORAGE_TOPIC: _connect_status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      HEAP_OPTS: -Xms256m -Xmx512m
+    ports: ["127.0.0.1:8083:8083"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8083/connectors || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      CLICKHOUSE_USER: hatid
+      CLICKHOUSE_PASSWORD: hatid
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports: ["127.0.0.1:8123:8123", "127.0.0.1:9002:9000"]
+    ulimits:
+      nofile: {soft: 262144, hard: 262144}
+    volumes:
+      - ch_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  metabase-db:
+    profiles: ["bi"]
+    image: postgres:16
+    environment:
+      POSTGRES_DB: metabase
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: metabase
+    volumes:
+      - mb_app_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metabase -d metabase"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  metabase:
+    profiles: ["bi"]
+    image: metabase/metabase:v0.63.19.1
+    depends_on:
+      metabase-db: {condition: service_healthy}
+      clickhouse: {condition: service_healthy}
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: 5432
+      MB_DB_USER: metabase
+      MB_DB_PASS: metabase
+      MB_DB_HOST: metabase-db
+      JAVA_TIMEZONE: Asia/Manila
+    ports: ["127.0.0.1:3002:3000"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pg_data:
+  ch_data:
+  mb_app_data:

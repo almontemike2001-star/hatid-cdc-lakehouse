@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Start the CDC stack (Postgres, Redpanda, Debezium, ClickHouse)
+        run: docker compose up -d --wait
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+
+      - name: Unit tests
+        run: uv run pytest -v -m "not stack"
+
+      - name: Replay 2 days of app activity with a live schema change, then reconcile
+        run: uv run hatid demo --days 2 --skip-dbt
+
+      # Slim CI on pull requests: build main's models first (stand-in for production), then
+      # only the models this PR changed and everything downstream of them.
+      - name: Build main's dbt models (production stand-in)
+        if: github.event_name == 'pull_request'
+        run: |
+          git worktree add "$RUNNER_TEMP/main" origin/main
+          uv run dbt build --project-dir "$RUNNER_TEMP/main/dbt" --profiles-dir "$RUNNER_TEMP/main/dbt" \
+            --target-path "$RUNNER_TEMP/main-target"
+
+      - name: dbt slim build (state:modified+)
+        if: github.event_name == 'pull_request'
+        run: |
+          uv run dbt build --project-dir dbt --profiles-dir dbt \
+            --select state:modified+ --defer --state "$RUNNER_TEMP/main-target"
+
+      - name: dbt full build
+        if: github.event_name == 'push'
+        run: uv run hatid transform
+
+      - name: Stack tests (CDC deletes/updates, Dagster asset graph)
+        run: uv run pytest -v -m stack
+
+      - name: KPI report
+        run: uv run hatid report
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kpi-report
+          path: reports/kpi_report.html
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail 200 connect clickhouse

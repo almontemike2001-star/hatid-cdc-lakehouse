@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      ClickHouse bronze layer fed by Debezium through Redpanda. `<table>` is the current state
+      (ReplacingMergeTree on the Postgres LSN; read it with FINAL), `<table>_changelog` keeps
+      every change with the raw Debezium JSON.
+    schema: bronze
+    tables:
+      - name: customers
+      - name: customers_changelog
+      - name: restaurants
+      - name: restaurants_changelog
+      - name: riders
+      - name: orders
+      - name: orders_changelog
+      - name: deliveries
+      - name: deliveries_changelog
+      - name: riders_changelog

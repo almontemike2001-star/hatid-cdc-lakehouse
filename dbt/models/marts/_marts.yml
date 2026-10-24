@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: >
+      One row per order: status, money, delivery timings and the restaurant rating in effect when
+      the order was placed (ASOF join on int_restaurant_rating_history). Orders of customers who
+      deleted their account keep their history with customer_id NULL (is_anonymised).
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: restaurant_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments: {to: ref('dim_restaurants'), field: restaurant_id}
+      - name: restaurant_rating_at_order
+        data_tests: [not_null]
+      - name: gmv
+        description: Subtotal + delivery fee for delivered orders, 0 otherwise. Tips excluded.
+  - name: dim_customers
+    description: Customers that currently exist in the app (deleted accounts excluded).
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+  - name: dim_customers_history
+    description: Type 2 customer history rebuilt from the CDC changelog.
+  - name: dim_restaurants
+    columns:
+      - name: restaurant_id
+        data_tests: [unique, not_null]
+  - name: dim_riders
+    columns:
+      - name: rider_id
+        data_tests: [unique, not_null]
+  - name: agg_daily_city
+    description: Orders, GMV, cancellations, delivery time and on-time rate by local date and city.
+  - name: agg_rider_daily
+    description: Deliveries, speed and on-time rate per rider per day.
+  - name: agg_restaurant_performance
+    columns:
+      - name: restaurant_id
+        data_tests: [unique]
+  - name: cdc_table_health
+    description: Change events by operation and replication lag per captured table.
+    columns:
+      - name: source_table
+        data_tests: [unique, not_null]

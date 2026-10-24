@@ -1,0 +1,27 @@
+{
+  "name": "hatid-postgres",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "hatid",
+    "database.password": "hatid",
+    "database.dbname": "hatid",
+    "topic.prefix": "hatid",
+    "schema.include.list": "app",
+    "slot.name": "hatid_slot",
+    "publication.name": "hatid_pub",
+    "publication.autocreate.mode": "filtered",
+    "snapshot.mode": "initial",
+    "decimal.handling.mode": "string",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.delete.tombstone.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,lsn,source.ts_ms"
+  }
+}

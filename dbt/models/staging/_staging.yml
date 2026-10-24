@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: Current state of each order (latest Postgres version, deletes removed).
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [placed, accepted, ready, picked_up, delivered, cancelled]
+      - name: cancel_reason
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [restaurant_rejected, customer_cancelled, delivery_failed]
+  - name: stg_deliveries
+    columns:
+      - name: delivery_id
+        data_tests: [unique, not_null]
+      - name: order_id
+        data_tests:
+          - unique
+          - relationships:
+              arguments: {to: ref('stg_orders'), field: order_id}
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [assigned, picked_up, delivered, failed, cancelled]
+  - name: stg_customers
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+  - name: stg_restaurants
+    columns:
+      - name: restaurant_id
+        data_tests: [unique, not_null]
+  - name: stg_riders
+    columns:
+      - name: rider_id
+        data_tests: [unique, not_null]

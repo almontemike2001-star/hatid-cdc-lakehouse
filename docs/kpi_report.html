@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hatid KPI Report</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-0: #f4f3f0;
+    --surface-1: #fcfcfb;
+    --border: #e2e0da;
+    --grid: #ebe9e4;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7973;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-0: #111110;
+      --surface-1: #1a1a19;
+      --border: #2e2d2b;
+      --grid: #262624;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e86;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-0: #111110;
+    --surface-1: #1a1a19;
+    --border: #2e2d2b;
+    --grid: #262624;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface-0); color: var(--text-primary);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px 16px 64px; }
+  header p { color: var(--text-secondary); margin: 4px 0 0; max-width: 72ch; }
+  h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);
+       margin: 36px 0 12px; font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .tile, .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; }
+  .tile { padding: 14px 16px; }
+  .tile .label { font-size: 12px; color: var(--text-secondary); }
+  .tile .value { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tile .note { font-size: 12px; color: var(--text-muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 16px; }
+  .card { padding: 16px 16px 8px; min-width: 0; }
+  .card.wide { grid-column: 1 / -1; }
+  .card h3 { margin: 0; font-size: 15px; }
+  .card .sub { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary); }
+  .insight { margin: 4px 0 8px; font-size: 13px; color: var(--text-primary); }
+  .chart { height: 300px; }
+  details { margin: 4px 0 8px; font-size: 13px; color: var(--text-secondary); }
+  summary { cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--grid); }
+  th { color: var(--text-muted); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  footer { margin-top: 40px; font-size: 12px; color: var(--text-muted); }
+  footer a { color: inherit; }
+  td.num, th.num { text-align: right; }
+  .ok { color: var(--series-3); font-weight: 600; }
+  .bad { color: var(--series-2); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Hatid KPI Report</h1>
+    <p id="intro">A synthetic food-delivery platform analysed through a CDC lakehouse: Postgres →
+      Debezium → Redpanda → ClickHouse → dbt, orchestrated by Dagster. Every number below comes
+      from rows that were inserted, updated and deleted in the app database and replicated as
+      change events. All data is synthetic.</p>
+  </header>
+
+  <h2>Deliveries</h2>
+  <div class="tiles" id="biz-tiles"></div>
+  <h2>Change data capture</h2>
+  <div class="tiles" id="cdc-tiles"></div>
+
+  <h2>Charts</h2>
+  <div class="grid">
+    <section class="card"><h3>Orders by local hour</h3><p class="sub">Lunch and dinner peaks; hover for prep time</p>
+      <div class="chart" id="c-hourly"></div><details><summary>Table</summary><div class="scroll" id="t-hourly"></div></details></section>
+    <section class="card"><h3>On-time rate by local hour</h3><p class="sub">Delivered at or before the promised time</p>
+      <div class="chart" id="c-ontime"></div></section>
+    <section class="card"><h3>Order-to-door time</h3><p class="sub">Delivered orders, 5-minute buckets</p>
+      <div class="chart" id="c-dist"></div><details><summary>Table</summary><div class="scroll" id="t-dist"></div></details></section>
+    <section class="card"><h3>GMV by city</h3><p class="sub">Delivered orders, subtotal + delivery fee (PHP); hover for on-time and cancellations</p>
+      <div class="chart" id="c-cities"></div><details><summary>Table</summary><div class="scroll" id="t-cities"></div></details></section>
+    <section class="card"><h3>Top 10 riders by deliveries</h3><p class="sub">Hover for on-time rate and distance</p>
+      <div class="chart" id="c-riders"></div><details><summary>Table</summary><div class="scroll" id="t-riders"></div></details></section>
+    <section class="card"><h3>Cancellations by reason</h3><p class="sub">Orders that ended cancelled</p>
+      <div class="chart" id="c-cancel"></div><details><summary>Table</summary><div class="scroll" id="t-cancel"></div></details></section>
+    <section class="card wide"><h3>Change events by table</h3><p class="sub">What Debezium captured: initial snapshot, inserts, updates and deletes</p>
+      <div class="chart" id="c-cdc"></div><details><summary>Table</summary><div class="scroll" id="t-cdc"></div></details></section>
+  </div>
+
+  <h2>Reconciliation</h2>
+  <section class="card"><h3>Postgres vs ClickHouse, table by table</h3>
+    <p class="sub">Row counts plus a checksum over each key and its last update time, so a missed update or delete fails the check, not only a missing row.</p>
+    <div class="scroll" id="t-recon"></div></section>
+
+  <footer>Generated by <code>hatid report</code> from the ClickHouse gold marts
+    (<a href="https://github.com/almontemike2001-star/hatid-cdc-lakehouse">source</a>).</footer>
+</main>
+<script>
+const DATA = {"kpis": [{"orders": 4541, "delivered": 4319, "cancellation_rate": 0.04866769434045364, "gmv": 2518582.69, "tips": 55040.0, "tipped_orders": 1051, "avg_total_minutes": 38.57909238249596, "on_time_rate": 0.7478583005325307, "anonymised_orders": 10, "first_day": "2026-10-01", "last_day": "2026-10-04"}], "people": [{"customers": 3065, "active_riders": 207, "restaurants": 120}], "cdc": [{"change_events": 39964, "inserts": 8983, "updates": 27628, "deletes": 13, "snapshot_events": 3340, "worst_p95_lag": 3.33}], "cdc_tables": [{"source_table": "orders", "snapshot_events": 0, "inserts": 4541, "updates": 18772, "deletes": 0, "current_rows": 4541, "p50_lag_seconds": 1.38, "p95_lag_seconds": 3.33}, {"source_table": "deliveries", "snapshot_events": 0, "inserts": 4364, "updates": 8726, "deletes": 0, "current_rows": 4364, "p50_lag_seconds": 1.35, "p95_lag_seconds": 3.32}, {"source_table": "customers", "snapshot_events": 3000, "inserts": 78, "updates": 52, "deletes": 13, "current_rows": 3065, "p50_lag_seconds": 1.2, "p95_lag_seconds": 1.75}, {"source_table": "riders", "snapshot_events": 220, "inserts": 0, "updates": 13, "deletes": 0, "current_rows": 220, "p50_lag_seconds": 1.11, "p95_lag_seconds": 1.84}, {"source_table": "restaurants", "snapshot_events": 120, "inserts": 0, "updates": 65, "deletes": 0, "current_rows": 120, "p50_lag_seconds": 1.09, "p95_lag_seconds": 1.61}], "hourly": [{"hour": 0, "orders": 60, "on_time_rate": 0.9655172413793104, "prep_minutes": 14.069491525423729}, {"hour": 1, "orders": 30, "on_time_rate": 0.9310344827586207, "prep_minutes": 13.283333333333335}, {"hour": 2, "orders": 16, "on_time_rate": 0.9375, "prep_minutes": 11.149999999999999}, {"hour": 3, "orders": 16, "on_time_rate": 0.9333333333333333, "prep_minutes": 12.853333333333332}, {"hour": 4, "orders": 15, "on_time_rate": 1.0, "prep_minutes": 12.140000000000002}, {"hour": 5, "orders": 31, "on_time_rate": 0.9629629629629629, "prep_minutes": 13.557142857142852}, {"hour": 6, "orders": 67, "on_time_rate": 0.9516129032258065, "prep_minutes": 12.871428571428572}, {"hour": 7, "orders": 138, "on_time_rate": 0.921875, "prep_minutes": 13.539230769230764}, {"hour": 8, "orders": 181, "on_time_rate": 0.9248554913294798, "prep_minutes": 13.143352601156078}, {"hour": 9, "orders": 160, "on_time_rate": 0.9664429530201343, "prep_minutes": 12.921333333333335}, {"hour": 10, "orders": 204, "on_time_rate": 0.9424083769633508, "prep_minutes": 13.303092783505141}, {"hour": 11, "orders": 364, "on_time_rate": 0.5901162790697675, "prep_minutes": 17.762247838616716}, {"hour": 12, "orders": 455, "on_time_rate": 0.5642201834862385, "prep_minutes": 18.401809954751144}, {"hour": 13, "orders": 319, "on_time_rate": 0.5508196721311476, "prep_minutes": 17.80227272727272}, {"hour": 14, "orders": 183, "on_time_rate": 0.9590643274853801, "prep_minutes": 13.245086705202313}, {"hour": 15, "orders": 159, "on_time_rate": 0.9605263157894737, "prep_minutes": 13.418954248366019}, {"hour": 16, "orders": 183, "on_time_rate": 0.9431818181818182, "prep_minutes": 13.332022471910117}, {"hour": 17, "orders": 273, "on_time_rate": 0.9653846153846154, "prep_minutes": 13.207169811320759}, {"hour": 18, "orders": 434, "on_time_rate": 0.5748792270531401, "prep_minutes": 17.93036144578312}, {"hour": 19, "orders": 455, "on_time_rate": 0.5665137614678899, "prep_minutes": 18.25608108108109}, {"hour": 20, "orders": 342, "on_time_rate": 0.5368098159509203, "prep_minutes": 18.303058103975538}, {"hour": 21, "orders": 228, "on_time_rate": 0.9441860465116279, "prep_minutes": 13.006912442396304}, {"hour": 22, "orders": 138, "on_time_rate": 0.9473684210526315, "prep_minutes": 13.142537313432838}, {"hour": 23, "orders": 90, "on_time_rate": 0.9431818181818182, "prep_minutes": 13.597727272727274}], "cities": [{"city": "Quezon City", "orders": 1059, "gmv": 576705.02, "cancellation_rate": 0.049102927289896126, "on_time_rate": 0.7485130218687873}, {"city": "Cebu City", "orders": 829, "gmv": 462269.6, "cancellation_rate": 0.045838359469240045, "on_time_rate": 0.753461567635904}, {"city": "Taguig", "orders": 797, "gmv": 442638.36, "cancellation_rate": 0.05269761606022585, "on_time_rate": 0.7629104635761589}, {"city": "Manila", "orders": 659, "gmv": 365384.0, "cancellation_rate": 0.03945371775417299, "on_time_rate": 0.7235317535545023}, {"city": "Davao City", "orders": 587, "gmv": 319231.33, "cancellation_rate": 0.05281090289608177, "on_time_rate": 0.751803417266187}, {"city": "Pasig", "orders": 408, "gmv": 234999.33, "cancellation_rate": 0.049019607843137254, "on_time_rate": 0.7448626288659794}, {"city": "Makati", "orders": 202, "gmv": 117355.05, "cancellation_rate": 0.0594059405940594, "on_time_rate": 0.7368421052631579}], "delivery_time": [{"bucket": 15, "orders": 30}, {"bucket": 20, "orders": 296}, {"bucket": 25, "orders": 645}, {"bucket": 30, "orders": 746}, {"bucket": 35, "orders": 810}, {"bucket": 40, "orders": 675}, {"bucket": 45, "orders": 479}, {"bucket": 50, "orders": 324}, {"bucket": 55, "orders": 191}, {"bucket": 60, "orders": 76}, {"bucket": 65, "orders": 38}, {"bucket": 70, "orders": 9}], "riders": [{"rider_name": "Vince Cruz", "city": "Davao City", "deliveries": 45, "on_time_rate": 0.7555666666666667, "km": 180.76}, {"rider_name": "Kat Bautista", "city": "Cebu City", "deliveries": 38, "on_time_rate": 0.6842105263157895, "km": 156.82}, {"rider_name": "Yna Mendoza", "city": "Cebu City", "deliveries": 38, "on_time_rate": 0.7631605263157893, "km": 144.57}, {"rider_name": "Rica Aquino", "city": "Davao City", "deliveries": 38, "on_time_rate": 0.7368315789473684, "km": 169.88}, {"rider_name": "Ella Villanueva", "city": "Cebu City", "deliveries": 36, "on_time_rate": 0.7222333333333333, "km": 152.88}, {"rider_name": "Nico Ramos", "city": "Cebu City", "deliveries": 35, "on_time_rate": 0.7428628571428572, "km": 154.81}, {"rider_name": "Gia Cruz", "city": "Davao City", "deliveries": 34, "on_time_rate": 0.7058882352941176, "km": 162.14}, {"rider_name": "Vince Tan", "city": "Taguig", "deliveries": 33, "on_time_rate": 0.7878515151515151, "km": 163.05}, {"rider_name": "Ana Dela Cruz", "city": "Cebu City", "deliveries": 33, "on_time_rate": 0.7878727272727273, "km": 127.3}, {"rider_name": "Dan Cruz", "city": "Cebu City", "deliveries": 32, "on_time_rate": 0.7187499999999999, "km": 135.8}], "cancellations": [{"reason": "restaurant_rejected", "orders": 96}, {"reason": "customer_cancelled", "orders": 81}, {"reason": "delivery_failed", "orders": 44}], "reconciliation": [{"table": "customers", "postgres_rows": 3065, "postgres_checksum": 5438556631530, "clickhouse_rows": 3065, "clickhouse_checksum": 5438556631530, "ok": true}, {"table": "restaurants", "postgres_rows": 120, "postgres_checksum": 212662056030, "clickhouse_rows": 120, "clickhouse_checksum": 212662056030, "ok": true}, {"table": "riders", "postgres_rows": 220, "postgres_checksum": 389493499433, "clickhouse_rows": 220, "clickhouse_checksum": 389493499433, "ok": true}, {"table": "orders", "postgres_rows": 4541, "postgres_checksum": 8132926182973, "clickhouse_rows": 4541, "clickhouse_checksum": 8132926182973, "ok": true}, {"table": "deliveries", "postgres_rows": 4364, "postgres_checksum": 7815918047197, "clickhouse_rows": 4364, "clickhouse_checksum": 7815918047197, "ok": true}]};
+const fmt = {
+  int: v => v == null ? "–" : Math.round(v).toLocaleString("en-US"),
+  php: v => v == null ? "–" : "₱" + Math.round(v).toLocaleString("en-US"),
+  phpM: v => v == null ? "–" : "₱" + (v / 1e6).toFixed(2) + "M",
+  pct: v => v == null ? "–" : (v * 100).toFixed(1) + "%",
+  min: v => v == null ? "–" : v.toFixed(1) + " min",
+  sec: v => v == null ? "–" : v.toFixed(1) + " s",
+  day: s => new Date(s + "T00:00").toLocaleDateString("en-US", { day: "numeric", month: "short" }),
+};
+const k = DATA.kpis[0], p = DATA.people[0], c = DATA.cdc[0];
+const tile = (label, value, note = "") =>
+  `<div class="tile"><div class="label">${label}</div><div class="value">${value}</div><div class="note">${note}</div></div>`;
+document.getElementById("intro").textContent += ` Period: ${fmt.day(k.first_day)} – ${fmt.day(k.last_day)} ${k.last_day.slice(0, 4)}.`;
+document.getElementById("biz-tiles").innerHTML = [
+  tile("Orders", fmt.int(k.orders), `${fmt.int(k.delivered)} delivered`),
+  tile("GMV", fmt.phpM(k.gmv), "delivered orders"),
+  tile("Order-to-door", fmt.min(k.avg_total_minutes), "average, delivered orders"),
+  tile("On-time rate", fmt.pct(k.on_time_rate), "at or before promised time"),
+  tile("Cancellation rate", fmt.pct(k.cancellation_rate)),
+  tile("Tips", fmt.php(k.tips), `${fmt.int(k.tipped_orders)} orders since the tip column went live`),
+].join("");
+document.getElementById("cdc-tiles").innerHTML = [
+  tile("Change events", fmt.int(c.change_events), `${fmt.int(c.snapshot_events)} from the initial snapshot`),
+  tile("Inserts", fmt.int(c.inserts)),
+  tile("Updates", fmt.int(c.updates), "status changes, moves, ratings"),
+  tile("Deletes", fmt.int(c.deletes), `${fmt.int(k.anonymised_orders)} orders anonymised`),
+  tile("Worst p95 lag", fmt.sec(c.worst_p95_lag), "Postgres commit → ClickHouse"),
+  tile("Customers", fmt.int(p.customers), `${fmt.int(p.active_riders)} active riders, ${p.restaurants} restaurants`),
+].join("");
+
+function table(id, rows, cols) {
+  document.getElementById(id).innerHTML =
+    `<table><thead><tr>${cols.map(c => `<th class="${c[2] || ""}">${c[0]}</th>`).join("")}</tr></thead><tbody>` +
+    rows.map(r => `<tr>${cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("")}</tr>`).join("") + "</tbody></table>";
+}
+const label = s => s.replace(/_/g, " ").replace(/^./, m => m.toUpperCase());
+table("t-hourly", DATA.hourly, [["Hour", r => r.hour + ":00"], ["Orders", r => fmt.int(r.orders), "num"], ["On-time", r => fmt.pct(r.on_time_rate), "num"], ["Prep", r => fmt.min(r.prep_minutes), "num"]]);
+table("t-dist", DATA.delivery_time, [["Minutes", r => `${r.bucket}–${r.bucket + 5}`], ["Orders", r => fmt.int(r.orders), "num"]]);
+table("t-cities", DATA.cities, [["City", r => r.city], ["Orders", r => fmt.int(r.orders), "num"], ["GMV", r => fmt.php(r.gmv), "num"], ["On-time", r => fmt.pct(r.on_time_rate), "num"], ["Cancelled", r => fmt.pct(r.cancellation_rate), "num"]]);
+table("t-riders", DATA.riders, [["Rider", r => r.rider_name], ["City", r => r.city], ["Deliveries", r => fmt.int(r.deliveries), "num"], ["On-time", r => fmt.pct(r.on_time_rate), "num"], ["km", r => r.km.toFixed(1), "num"]]);
+table("t-cancel", DATA.cancellations, [["Reason", r => label(r.reason)], ["Orders", r => fmt.int(r.orders), "num"]]);
+table("t-cdc", DATA.cdc_tables, [["Table", r => r.source_table], ["Snapshot", r => fmt.int(r.snapshot_events), "num"], ["Inserts", r => fmt.int(r.inserts), "num"], ["Updates", r => fmt.int(r.updates), "num"], ["Deletes", r => fmt.int(r.deletes), "num"], ["Current rows", r => fmt.int(r.current_rows), "num"], ["p50 lag", r => fmt.sec(r.p50_lag_seconds), "num"], ["p95 lag", r => fmt.sec(r.p95_lag_seconds), "num"]]);
+table("t-recon", DATA.reconciliation, [["Table", r => r.table], ["Postgres rows", r => fmt.int(r.postgres_rows), "num"], ["ClickHouse rows", r => fmt.int(r.clickhouse_rows), "num"], ["Checksum", r => r.postgres_checksum === r.clickhouse_checksum ? "match" : "differs", "num"], ["Status", r => r.ok ? '<span class="ok">✓ in sync</span>' : '<span class="bad">✗ differs</span>', "num"]]);
+
+function draw() {
+  const css = getComputedStyle(document.documentElement);
+  const v = name => css.getPropertyValue(name).trim();
+  const S = [v("--series-1"), v("--series-2"), v("--series-3"), v("--series-4")];
+  const base = (extra = {}) => ({
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: v("--text-secondary"), size: 12 }, margin: { l: 56, r: 12, t: 8, b: 36 },
+    hoverlabel: { bgcolor: v("--surface-1"), bordercolor: v("--border"), font: { color: v("--text-primary") } },
+    xaxis: { gridcolor: v("--grid"), linecolor: v("--border"), zeroline: false, ...(extra.xaxis || {}) },
+    yaxis: { gridcolor: v("--grid"), linecolor: v("--border"), zeroline: false, automargin: true, ...(extra.yaxis || {}) },
+    showlegend: false, bargap: 0.2, ...extra.rest,
+  });
+  const cfg = { displayModeBar: false, responsive: true };
+  const bar = { marker: { color: S[0], line: { width: 0 } } };
+  const H = DATA.hourly;
+  Plotly.react("c-hourly", [{ type: "bar", x: H.map(r => r.hour), y: H.map(r => r.orders), ...bar,
+    customdata: H.map(r => r.prep_minutes), hovertemplate: "%{x}:00<br>%{y:,} orders<br>avg prep %{customdata:.1f} min<extra></extra>" }],
+    base({ xaxis: { dtick: 3, ticksuffix: ":00" } }), cfg);
+  Plotly.react("c-ontime", [{ type: "scatter", mode: "lines+markers", x: H.map(r => r.hour), y: H.map(r => r.on_time_rate),
+    line: { color: S[0], width: 2 }, marker: { size: 8, color: S[0], line: { color: v("--surface-1"), width: 2 } },
+    hovertemplate: "%{x}:00<br>%{y:.1%} on time<extra></extra>" }],
+    base({ xaxis: { dtick: 3, ticksuffix: ":00" }, yaxis: { tickformat: ".0%", range: [0, 1.05] } }), cfg);
+  const D = DATA.delivery_time;
+  Plotly.react("c-dist", [{ type: "bar", x: D.map(r => r.bucket + 2.5), y: D.map(r => r.orders), width: 4.6, ...bar,
+    customdata: D.map(r => `${r.bucket}–${r.bucket + 5}`), hovertemplate: "%{customdata} min<br>%{y:,} orders<extra></extra>" }],
+    base({ xaxis: { title: { text: "minutes from order to door" }, dtick: 10 } }), cfg);
+  const hbar = (id, labels, values, hover, xaxis, custom) => Plotly.react(id, [{ type: "bar", orientation: "h", y: labels, x: values,
+    customdata: custom, ...bar, hovertemplate: hover }], base({ xaxis, yaxis: { autorange: "reversed", gridcolor: "rgba(0,0,0,0)" } }), cfg);
+  hbar("c-cities", DATA.cities.map(r => r.city), DATA.cities.map(r => r.gmv),
+    "%{y}<br>₱%{x:,.0f} GMV<br>%{customdata[0]:.1%} on time · %{customdata[1]:.1%} cancelled<extra></extra>",
+    { tickprefix: "₱", tickformat: "~s" }, DATA.cities.map(r => [r.on_time_rate, r.cancellation_rate]));
+  hbar("c-riders", DATA.riders.map(r => r.rider_name), DATA.riders.map(r => r.deliveries),
+    "%{y} · %{customdata[0]}<br>%{x} deliveries<br>%{customdata[1]:.1%} on time · %{customdata[2]:.1f} km<extra></extra>",
+    {}, DATA.riders.map(r => [r.city, r.on_time_rate, r.km]));
+  hbar("c-cancel", DATA.cancellations.map(r => label(r.reason)), DATA.cancellations.map(r => r.orders),
+    "%{y}<br>%{x} orders<extra></extra>", {});
+  const T = DATA.cdc_tables;
+  const stack = (name, key, color) => ({ type: "bar", orientation: "h", name, y: T.map(r => r.source_table), x: T.map(r => r[key]),
+    marker: { color, line: { color: v("--surface-1"), width: 1 } }, hovertemplate: `%{y}<br>${name}: %{x:,}<extra></extra>` });
+  Plotly.react("c-cdc", [stack("Snapshot", "snapshot_events", S[0]), stack("Inserts", "inserts", S[1]),
+    stack("Updates", "updates", S[2]), stack("Deletes", "deletes", S[3])],
+    base({ yaxis: { autorange: "reversed", gridcolor: "rgba(0,0,0,0)" }, rest: { barmode: "stack", showlegend: true,
+      legend: { orientation: "h", traceorder: "normal", y: 1.15, x: 0, font: { color: v("--text-secondary") } },
+      margin: { l: 90, r: 12, t: 28, b: 36 } } }), cfg);
+}
+draw();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>
+</body>
+</html>

@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hatid KPI Report</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-0: #f4f3f0;
+    --surface-1: #fcfcfb;
+    --border: #e2e0da;
+    --grid: #ebe9e4;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7973;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-0: #111110;
+      --surface-1: #1a1a19;
+      --border: #2e2d2b;
+      --grid: #262624;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e86;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --series-4: #c98500;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-0: #111110;
+    --surface-1: #1a1a19;
+    --border: #2e2d2b;
+    --grid: #262624;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface-0); color: var(--text-primary);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px 16px 64px; }
+  header p { color: var(--text-secondary); margin: 4px 0 0; max-width: 72ch; }
+  h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);
+       margin: 36px 0 12px; font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .tile, .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; }
+  .tile { padding: 14px 16px; }
+  .tile .label { font-size: 12px; color: var(--text-secondary); }
+  .tile .value { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tile .note { font-size: 12px; color: var(--text-muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 16px; }
+  .card { padding: 16px 16px 8px; min-width: 0; }
+  .card.wide { grid-column: 1 / -1; }
+  .card h3 { margin: 0; font-size: 15px; }
+  .card .sub { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary); }
+  .insight { margin: 4px 0 8px; font-size: 13px; color: var(--text-primary); }
+  .chart { height: 300px; }
+  details { margin: 4px 0 8px; font-size: 13px; color: var(--text-secondary); }
+  summary { cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--grid); }
+  th { color: var(--text-muted); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  footer { margin-top: 40px; font-size: 12px; color: var(--text-muted); }
+  footer a { color: inherit; }
+  td.num, th.num { text-align: right; }
+  .ok { color: var(--series-3); font-weight: 600; }
+  .bad { color: var(--series-2); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Hatid KPI Report</h1>
+    <p id="intro">A synthetic food-delivery platform analysed through a CDC lakehouse: Postgres →
+      Debezium → Redpanda → ClickHouse → dbt, orchestrated by Dagster. Every number below comes
+      from rows that were inserted, updated and deleted in the app database and replicated as
+      change events. All data is synthetic.</p>
+  </header>
+
+  <h2>Deliveries</h2>
+  <div class="tiles" id="biz-tiles"></div>
+  <h2>Change data capture</h2>
+  <div class="tiles" id="cdc-tiles"></div>
+
+  <h2>Charts</h2>
+  <div class="grid">
+    <section class="card"><h3>Orders by local hour</h3><p class="sub">Lunch and dinner peaks; hover for prep time</p>
+      <div class="chart" id="c-hourly"></div><details><summary>Table</summary><div class="scroll" id="t-hourly"></div></details></section>
+    <section class="card"><h3>On-time rate by local hour</h3><p class="sub">Delivered at or before the promised time</p>
+      <div class="chart" id="c-ontime"></div></section>
+    <section class="card"><h3>Order-to-door time</h3><p class="sub">Delivered orders, 5-minute buckets</p>
+      <div class="chart" id="c-dist"></div><details><summary>Table</summary><div class="scroll" id="t-dist"></div></details></section>
+    <section class="card"><h3>GMV by city</h3><p class="sub">Delivered orders, subtotal + delivery fee (PHP); hover for on-time and cancellations</p>
+      <div class="chart" id="c-cities"></div><details><summary>Table</summary><div class="scroll" id="t-cities"></div></details></section>
+    <section class="card"><h3>Top 10 riders by deliveries</h3><p class="sub">Hover for on-time rate and distance</p>
+      <div class="chart" id="c-riders"></div><details><summary>Table</summary><div class="scroll" id="t-riders"></div></details></section>
+    <section class="card"><h3>Cancellations by reason</h3><p class="sub">Orders that ended cancelled</p>
+      <div class="chart" id="c-cancel"></div><details><summary>Table</summary><div class="scroll" id="t-cancel"></div></details></section>
+    <section class="card wide"><h3>Change events by table</h3><p class="sub">What Debezium captured: initial snapshot, inserts, updates and deletes</p>
+      <div class="chart" id="c-cdc"></div><details><summary>Table</summary><div class="scroll" id="t-cdc"></div></details></section>
+  </div>
+
+  <h2>Reconciliation</h2>
+  <section class="card"><h3>Postgres vs ClickHouse, table by table</h3>
+    <p class="sub">Row counts plus a checksum over each key and its last update time, so a missed update or delete fails the check, not only a missing row.</p>
+    <div class="scroll" id="t-recon"></div></section>
+
+  <footer>Generated by <code>hatid report</code> from the ClickHouse gold marts
+    (<a href="https://github.com/almontemike2001-star/hatid-cdc-lakehouse">source</a>).</footer>
+</main>
+<script>
+const DATA = __DATA__;
+const fmt = {
+  int: v => v == null ? "–" : Math.round(v).toLocaleString("en-US"),
+  php: v => v == null ? "–" : "₱" + Math.round(v).toLocaleString("en-US"),
+  phpM: v => v == null ? "–" : "₱" + (v / 1e6).toFixed(2) + "M",
+  pct: v => v == null ? "–" : (v * 100).toFixed(1) + "%",
+  min: v => v == null ? "–" : v.toFixed(1) + " min",
+  sec: v => v == null ? "–" : v.toFixed(1) + " s",
+  day: s => new Date(s + "T00:00").toLocaleDateString("en-US", { day: "numeric", month: "short" }),
+};
+const k = DATA.kpis[0], p = DATA.people[0], c = DATA.cdc[0];
+const tile = (label, value, note = "") =>
+  `<div class="tile"><div class="label">${label}</div><div class="value">${value}</div><div class="note">${note}</div></div>`;
+document.getElementById("intro").textContent += ` Period: ${fmt.day(k.first_day)} – ${fmt.day(k.last_day)} ${k.last_day.slice(0, 4)}.`;
+document.getElementById("biz-tiles").innerHTML = [
+  tile("Orders", fmt.int(k.orders), `${fmt.int(k.delivered)} delivered`),
+  tile("GMV", fmt.phpM(k.gmv), "delivered orders"),
+  tile("Order-to-door", fmt.min(k.avg_total_minutes), "average, delivered orders"),
+  tile("On-time rate", fmt.pct(k.on_time_rate), "at or before promised time"),
+  tile("Cancellation rate", fmt.pct(k.cancellation_rate)),
+  tile("Tips", fmt.php(k.tips), `${fmt.int(k.tipped_orders)} orders since the tip column went live`),
+].join("");
+document.getElementById("cdc-tiles").innerHTML = [
+  tile("Change events", fmt.int(c.change_events), `${fmt.int(c.snapshot_events)} from the initial snapshot`),
+  tile("Inserts", fmt.int(c.inserts)),
+  tile("Updates", fmt.int(c.updates), "status changes, moves, ratings"),
+  tile("Deletes", fmt.int(c.deletes), `${fmt.int(k.anonymised_orders)} orders anonymised`),
+  tile("Worst p95 lag", fmt.sec(c.worst_p95_lag), "Postgres commit → ClickHouse"),
+  tile("Customers", fmt.int(p.customers), `${fmt.int(p.active_riders)} active riders, ${p.restaurants} restaurants`),
+].join("");
+
+function table(id, rows, cols) {
+  document.getElementById(id).innerHTML =
+    `<table><thead><tr>${cols.map(c => `<th class="${c[2] || ""}">${c[0]}</th>`).join("")}</tr></thead><tbody>` +
+    rows.map(r => `<tr>${cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("")}</tr>`).join("") + "</tbody></table>";
+}
+const label = s => s.replace(/_/g, " ").replace(/^./, m => m.toUpperCase());
+table("t-hourly", DATA.hourly, [["Hour", r => r.hour + ":00"], ["Orders", r => fmt.int(r.orders), "num"], ["On-time", r => fmt.pct(r.on_time_rate), "num"], ["Prep", r => fmt.min(r.prep_minutes), "num"]]);
+table("t-dist", DATA.delivery_time, [["Minutes", r => `${r.bucket}–${r.bucket + 5}`], ["Orders", r => fmt.int(r.orders), "num"]]);
+table("t-cities", DATA.cities, [["City", r => r.city], ["Orders", r => fmt.int(r.orders), "num"], ["GMV", r => fmt.php(r.gmv), "num"], ["On-time", r => fmt.pct(r.on_time_rate), "num"], ["Cancelled", r => fmt.pct(r.cancellation_rate), "num"]]);
+table("t-riders", DATA.riders, [["Rider", r => r.rider_name], ["City", r => r.city], ["Deliveries", r => fmt.int(r.deliveries), "num"], ["On-time", r => fmt.pct(r.on_time_rate), "num"], ["km", r => r.km.toFixed(1), "num"]]);
+table("t-cancel", DATA.cancellations, [["Reason", r => label(r.reason)], ["Orders", r => fmt.int(r.orders), "num"]]);
+table("t-cdc", DATA.cdc_tables, [["Table", r => r.source_table], ["Snapshot", r => fmt.int(r.snapshot_events), "num"], ["Inserts", r => fmt.int(r.inserts), "num"], ["Updates", r => fmt.int(r.updates), "num"], ["Deletes", r => fmt.int(r.deletes), "num"], ["Current rows", r => fmt.int(r.current_rows), "num"], ["p50 lag", r => fmt.sec(r.p50_lag_seconds), "num"], ["p95 lag", r => fmt.sec(r.p95_lag_seconds), "num"]]);
+table("t-recon", DATA.reconciliation, [["Table", r => r.table], ["Postgres rows", r => fmt.int(r.postgres_rows), "num"], ["ClickHouse rows", r => fmt.int(r.clickhouse_rows), "num"], ["Checksum", r => r.postgres_checksum === r.clickhouse_checksum ? "match" : "differs", "num"], ["Status", r => r.ok ? '<span class="ok">✓ in sync</span>' : '<span class="bad">✗ differs</span>', "num"]]);
+
+function draw() {
+  const css = getComputedStyle(document.documentElement);
+  const v = name => css.getPropertyValue(name).trim();
+  const S = [v("--series-1"), v("--series-2"), v("--series-3"), v("--series-4")];
+  const base = (extra = {}) => ({
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { color: v("--text-secondary"), size: 12 }, margin: { l: 56, r: 12, t: 8, b: 36 },
+    hoverlabel: { bgcolor: v("--surface-1"), bordercolor: v("--border"), font: { color: v("--text-primary") } },
+    xaxis: { gridcolor: v("--grid"), linecolor: v("--border"), zeroline: false, ...(extra.xaxis || {}) },
+    yaxis: { gridcolor: v("--grid"), linecolor: v("--border"), zeroline: false, automargin: true, ...(extra.yaxis || {}) },
+    showlegend: false, bargap: 0.2, ...extra.rest,
+  });
+  const cfg = { displayModeBar: false, responsive: true };
+  const bar = { marker: { color: S[0], line: { width: 0 } } };
+  const H = DATA.hourly;
+  Plotly.react("c-hourly", [{ type: "bar", x: H.map(r => r.hour), y: H.map(r => r.orders), ...bar,
+    customdata: H.map(r => r.prep_minutes), hovertemplate: "%{x}:00<br>%{y:,} orders<br>avg prep %{customdata:.1f} min<extra></extra>" }],
+    base({ xaxis: { dtick: 3, ticksuffix: ":00" } }), cfg);
+  Plotly.react("c-ontime", [{ type: "scatter", mode: "lines+markers", x: H.map(r => r.hour), y: H.map(r => r.on_time_rate),
+    line: { color: S[0], width: 2 }, marker: { size: 8, color: S[0], line: { color: v("--surface-1"), width: 2 } },
+    hovertemplate: "%{x}:00<br>%{y:.1%} on time<extra></extra>" }],
+    base({ xaxis: { dtick: 3, ticksuffix: ":00" }, yaxis: { tickformat: ".0%", range: [0, 1.05] } }), cfg);
+  const D = DATA.delivery_time;
+  Plotly.react("c-dist", [{ type: "bar", x: D.map(r => r.bucket + 2.5), y: D.map(r => r.orders), width: 4.6, ...bar,
+    customdata: D.map(r => `${r.bucket}–${r.bucket + 5}`), hovertemplate: "%{customdata} min<br>%{y:,} orders<extra></extra>" }],
+    base({ xaxis: { title: { text: "minutes from order to door" }, dtick: 10 } }), cfg);
+  const hbar = (id, labels, values, hover, xaxis, custom) => Plotly.react(id, [{ type: "bar", orientation: "h", y: labels, x: values,
+    customdata: custom, ...bar, hovertemplate: hover }], base({ xaxis, yaxis: { autorange: "reversed", gridcolor: "rgba(0,0,0,0)" } }), cfg);
+  hbar("c-cities", DATA.cities.map(r => r.city), DATA.cities.map(r => r.gmv),
+    "%{y}<br>₱%{x:,.0f} GMV<br>%{customdata[0]:.1%} on time · %{customdata[1]:.1%} cancelled<extra></extra>",
+    { tickprefix: "₱", tickformat: "~s" }, DATA.cities.map(r => [r.on_time_rate, r.cancellation_rate]));
+  hbar("c-riders", DATA.riders.map(r => r.rider_name), DATA.riders.map(r => r.deliveries),
+    "%{y} · %{customdata[0]}<br>%{x} deliveries<br>%{customdata[1]:.1%} on time · %{customdata[2]:.1f} km<extra></extra>",
+    {}, DATA.riders.map(r => [r.city, r.on_time_rate, r.km]));
+  hbar("c-cancel", DATA.cancellations.map(r => label(r.reason)), DATA.cancellations.map(r => r.orders),
+    "%{y}<br>%{x} orders<extra></extra>", {});
+  const T = DATA.cdc_tables;
+  const stack = (name, key, color) => ({ type: "bar", orientation: "h", name, y: T.map(r => r.source_table), x: T.map(r => r[key]),
+    marker: { color, line: { color: v("--surface-1"), width: 1 } }, hovertemplate: `%{y}<br>${name}: %{x:,}<extra></extra>` });
+  Plotly.react("c-cdc", [stack("Snapshot", "snapshot_events", S[0]), stack("Inserts", "inserts", S[1]),
+    stack("Updates", "updates", S[2]), stack("Deletes", "deletes", S[3])],
+    base({ yaxis: { autorange: "reversed", gridcolor: "rgba(0,0,0,0)" }, rest: { barmode: "stack", showlegend: true,
+      legend: { orientation: "h", traceorder: "normal", y: 1.15, x: 0, font: { color: v("--text-secondary") } },
+      margin: { l: 90, r: 12, t: 28, b: 36 } } }), cfg);
+}
+draw();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>
+</body>
+</html>
